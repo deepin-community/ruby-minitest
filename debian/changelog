@@ -1,3 +1,95 @@
+ruby-minitest (5.25.4-2) unstable; urgency=medium
+
+  * debian/rules: set LC_ALL to C.UTF-8
+
+ -- Lucas Nussbaum <lucas@debian.org>  Mon, 10 Feb 2025 19:01:19 +0100
+
+ruby-minitest (5.25.4-1) unstable; urgency=medium
+
+  * New upstream version 5.25.4
+  * Drop patches that are no longer needed:
+    + disable-require-rubygems
+    + encoding
+
+ -- Lucas Nussbaum <lucas@debian.org>  Wed, 29 Jan 2025 15:46:40 +0100
+
+ruby-minitest (5.22.3-1) unstable; urgency=medium
+
+  * New upstream version 5.22.3
+  * Refresh patches
+
+ -- Lucas Nussbaum <lucas@debian.org>  Wed, 08 May 2024 21:39:25 +0200
+
+ruby-minitest (5.22.2-1) unstable; urgency=medium
+
+  * New upstream version 5.22.2
+
+ -- Lucas Nussbaum <lucas@debian.org>  Sun, 03 Mar 2024 16:38:52 +0100
+
+ruby-minitest (5.19.0-1) unstable; urgency=medium
+
+  * New upstream version 5.19.0
+
+ -- Lucas Nussbaum <lucas@debian.org>  Sun, 27 Aug 2023 07:39:02 +0200
+
+ruby-minitest (5.17.0-1) unstable; urgency=medium
+
+  * New upstream version 5.17.0
+  * Refresh patches
+
+ -- Lucas Nussbaum <lucas@debian.org>  Fri, 06 Jan 2023 17:01:35 +0100
+
+ruby-minitest (5.16.3-2) unstable; urgency=medium
+
+  * Upload to unstable.
+
+ -- Lucas Nussbaum <lucas@debian.org>  Mon, 26 Dec 2022 13:52:07 +0100
+
+ruby-minitest (5.16.3-1) experimental; urgency=medium
+
+  * New upstream version 5.16.3
+  * Refresh packaging. Main changes:
+    + Bump Standards-Version
+    + Add Rules-Requires-Root: no
+  * Build-depend on hoe
+
+ -- Lucas Nussbaum <lucas@debian.org>  Sat, 24 Dec 2022 18:53:36 +0100
+
+ruby-minitest (5.15.0-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+  * Update patches:
+    - Refresh d/p/disable-require-rubygems
+    - Remove d/p/disable-some-tests
+
+ -- Lucas Kanashiro <kanashiro@debian.org>  Wed, 09 Feb 2022 16:43:14 -0300
+
+ruby-minitest (5.13.0-2) unstable; urgency=medium
+
+  * Team Upload
+
+  [ Debian Janitor ]
+  * Trim trailing whitespace.
+  * Set upstream metadata fields: Repository, Repository-Browse.
+  * Set upstream metadata fields: Bug-Database, Bug-Submit.
+  * Update standards version to 4.5.0, no changes needed.
+
+  [ Cédric Boutillier ]
+  * Update team name
+  * Add .gitattributes to keep unwanted files out of the source package
+
+  [ Debian Janitor ]
+  * Update watch file format version to 4.
+  * Bump debhelper from old 12 to 13.
+  * Update standards version to 4.5.1, no changes needed.
+
+  [ Pirate Praveen ]
+  * Bump Standards-Version to 4.6.0 (no changes needed)
+  * Use gem-install layout (now bundle install --local needs this)
+
+ -- Pirate Praveen <praveen@debian.org>  Sat, 22 Jan 2022 18:29:50 +0530
+
 ruby-minitest (5.13.0-1) unstable; urgency=medium
 
   [ Utkarsh Gupta ]
@@ -150,7 +242,7 @@ ruby-minitest (5.2.1-1) unstable; urgency=medium
 ruby-minitest (5.1.0-1) unstable; urgency=medium
 
   * Imported Upstream version 5.1.0
-  * debian/control: 
+  * debian/control:
     + bump Standards-Version to 3.9.5 (no changes needed)
     + build with gem2deb >= 0.5 to drop ruby1.8 support
     + update the homepage field
@@ -211,7 +303,7 @@ ruby-minitest (4.7.4-1) unstable; urgency=low
 
 ruby-minitest (4.7.3-1) experimental; urgency=low
 
-  * New upstream release 
+  * New upstream release
 
  -- Cédric Boutillier <boutil@debian.org>  Wed, 24 Apr 2013 17:39:35 +0200
 

@@ -4,15 +4,21 @@ class Module # :nodoc:
   def infect_an_assertion meth, new_name, dont_flip = false # :nodoc:
     block = dont_flip == :block
     dont_flip = false if block
+    target_obj = block ? "_{obj.method}" : "_(obj)"
+
+    # https://eregon.me/blog/2021/02/13/correct-delegation-in-ruby-2-27-3.html
+    # Drop this when we can drop ruby 2.6 (aka after rails 6.1 EOL, ~2024-06)
+    kw_extra = "ruby2_keywords %p" % [new_name] if respond_to? :ruby2_keywords, true
 
     # warn "%-22p -> %p %p" % [meth, new_name, dont_flip]
     self.class_eval <<-EOM, __FILE__, __LINE__ + 1
       def #{new_name} *args
         where = Minitest.filter_backtrace(caller).first
         where = where.split(/:in /, 2).first # clean up noise
-        warn "DEPRECATED: global use of #{new_name} from #\{where}. Use _(obj).#{new_name} instead. This will fail in Minitest 6."
+        Kernel.warn "DEPRECATED: global use of #{new_name} from #\{where}. Use #{target_obj}.#{new_name} instead. This will fail in Minitest 6."
         Minitest::Expectation.new(self, Minitest::Spec.current).#{new_name}(*args)
       end
+      #{kw_extra}
     EOM
 
     Minitest::Expectation.class_eval <<-EOM, __FILE__, __LINE__ + 1
@@ -27,6 +33,7 @@ class Module # :nodoc:
           ctx.#{meth}(args.first, target, *args[1..-1])
         end
       end
+      #{kw_extra}
     EOM
   end
 end
@@ -65,7 +72,7 @@ module Kernel
   #
   # For some suggestions on how to improve your specs, try:
   #
-  # http://betterspecs.org
+  # https://betterspecs.org
   #
   # but do note that several items there are debatable or specific to
   # rspec.
@@ -74,14 +81,15 @@ module Kernel
 
   def describe desc, *additional_desc, &block # :doc:
     stack = Minitest::Spec.describe_stack
-    name  = [stack.last, desc, *additional_desc].compact.join("::")
-    sclas = stack.last || if Class === self && kind_of?(Minitest::Spec::DSL) then
-                            self
-                          else
-                            Minitest::Spec.spec_type desc, *additional_desc
-                          end
+    is_spec_class = Class === self && kind_of?(Minitest::Spec::DSL)
+    name  = [stack.last, desc, *additional_desc]
+    name.prepend self if stack.empty? && is_spec_class
+    sclas =
+      stack.last                 \
+      || (is_spec_class && self) \
+      || Minitest::Spec.spec_type(desc, *additional_desc)
 
-    cls = sclas.create name, desc
+    cls = sclas.create name.compact.join("::"), desc
 
     stack.push cls
     cls.class_eval(&block)
@@ -242,7 +250,7 @@ class Minitest::Spec < Minitest::Test
       pre, post = "let '#{name}' cannot ", ". Please use another name."
       methods = Minitest::Spec.instance_methods.map(&:to_s) - %w[subject]
       raise ArgumentError, "#{pre}begin with 'test'#{post}" if
-        name =~ /\Atest/
+        name.start_with? "test"
       raise ArgumentError, "#{pre}override a method in Minitest::Spec#{post}" if
         methods.include? name
 
@@ -261,7 +269,7 @@ class Minitest::Spec < Minitest::Test
     end
 
     def create name, desc # :nodoc:
-      cls = Class.new(self) do
+      cls = Class.new self do
         @name = name
         @desc = desc
 
@@ -282,7 +290,7 @@ class Minitest::Spec < Minitest::Test
     end
 
     attr_reader :desc # :nodoc:
-    alias :specify :it
+    alias specify it
 
     ##
     # Rdoc... why are you so dumb?

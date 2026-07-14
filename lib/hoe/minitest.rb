@@ -1,6 +1,7 @@
 # :stopdoc:
 
 class Hoe
+  # empty
 end
 
 module Hoe::Minitest
@@ -16,7 +17,7 @@ module Hoe::Minitest
 
     gem "minitest"
     require "minitest"
-    version = Minitest::VERSION.split(/\./).first(2).join(".")
+    version = Minitest::VERSION.split(".").first(2).join "."
 
     dependency "minitest", "~> #{version}", :development unless
       minitest? or ENV["MT_NO_ISOLATE"]
@@ -24,9 +25,5 @@ module Hoe::Minitest
 
   def define_minitest_tasks
     self.testlib = :minitest
-
-    # make sure we use the gemmed minitest on 1.9
-    self.test_prelude = 'gem "minitest"' unless
-      minitest? or ENV["MT_NO_ISOLATE"]
   end
 end

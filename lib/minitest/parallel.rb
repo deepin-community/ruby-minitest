@@ -1,5 +1,5 @@
 module Minitest
-  module Parallel #:nodoc:
+  module Parallel # :nodoc:
 
     ##
     # The engine used to run multiple tests in parallel.
@@ -16,7 +16,7 @@ module Minitest
 
       def initialize size
         @size  = size
-        @queue = Queue.new
+        @queue = Thread::Queue.new
         @pool  = nil
       end
 
@@ -24,10 +24,10 @@ module Minitest
       # Start the executor
 
       def start
-        @pool  = size.times.map {
-          Thread.new(@queue) do |queue|
+        @pool  = Array.new(size) {
+          Thread.new @queue do |queue|
             Thread.current.abort_on_exception = true
-            while (job = queue.pop)
+            while job = queue.pop do
               klass, method, reporter = job
               reporter.synchronize { reporter.prerecord klass, method }
               result = Minitest.run_one_method klass, method

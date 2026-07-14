@@ -2,6 +2,7 @@
 
 require "rubygems"
 require "hoe"
+$:.unshift "lib" # to pick up lib/minitest/test_task.rb when minitest not installed
 
 Hoe.plugin :seattlerb
 Hoe.plugin :rdoc
@@ -11,7 +12,7 @@ Hoe.spec "minitest" do
 
   license "MIT"
 
-  require_ruby_version "~> 2.2"
+  require_ruby_version [">= 2.6", "< 4.0"]
 end
 
 desc "Find missing expectations"
@@ -21,7 +22,7 @@ task :specs do
   require "minitest/spec"
 
   pos_prefix, neg_prefix = "must", "wont"
-  skip_re = /^(must|wont)$|wont_(throw)|must_(block|not?_|nothing|raise$)/x
+  skip_re = /^(must|wont)$|wont_(throw)|must_(block|not?_|nothing|send|raise$)/x
   dont_flip_re = /(must|wont)_(include|respond_to)/
 
   map = {
@@ -32,6 +33,9 @@ task :specs do
     /_includes/                            => "_include",
     /(must|wont)_(.*_of|nil|silent|empty)/ => '\1_be_\2',
     /must_raises/                          => "must_raise",
+    /(must|wont)_pattern/                  => '\1_pattern_match',
+    /(must|wont)_predicate/                => '\1_be',
+    /(must|wont)_path_exists/              => 'path_\1_exist',
   }
 
   expectations = Minitest::Expectations.public_instance_methods.map(&:to_s)
@@ -67,6 +71,11 @@ end
 
 task :bugs do
   sh "for f in bug*.rb ; do echo $f; echo; #{Gem.ruby} -Ilib $f && rm $f ; done"
+end
+
+Minitest::TestTask.create :testW0 do |t|
+  t.warning = false
+  t.test_prelude = "$-w = nil"
 end
 
 # vim: syntax=Ruby
