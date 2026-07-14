@@ -3,8 +3,36 @@ require "stringio"
 require "minitest/autorun"
 
 class Minitest::Test
-  def clean s
-    s.gsub(/^ {6}/, "")
+  def with_empty_backtrace_filter
+    with_backtrace_filter Minitest::BacktraceFilter.new %r%.% do
+      yield
+    end
+  end
+
+  def with_backtrace_filter filter
+    original = Minitest.backtrace_filter
+
+    Minitest::Test.io_lock.synchronize do # try not to trounce in parallel
+      begin
+        Minitest.backtrace_filter = filter
+        yield
+      ensure
+        Minitest.backtrace_filter = original
+      end
+    end
+  end
+
+  def error_on_warn?
+    defined?(Minitest::ErrorOnWarning)
+  end
+
+  def assert_deprecation re = /DEPRECATED/
+    re = // if $-w.nil? # "skip" if running `rake testW0`
+    assert_output "", re do
+      yield
+    end
+  rescue Minitest::UnexpectedWarning => e # raised if -Werror was used
+    assert_match re, e.message
   end
 end
 
@@ -36,7 +64,7 @@ class MetaMetaMetaTestCase < Minitest::Test
   def run_tu_with_fresh_reporter flags = %w[--seed 42]
     options = Minitest.process_args flags
 
-    @output = StringIO.new("".encode('UTF-8'))
+    @output = StringIO.new(+"")
 
     self.reporter = Minitest::CompositeReporter.new
     reporter << Minitest::SummaryReporter.new(@output, options)
@@ -45,7 +73,7 @@ class MetaMetaMetaTestCase < Minitest::Test
     with_stderr @output do
       reporter.start
 
-      yield(reporter) if block_given?
+      yield reporter if block_given?
 
       @tus ||= [@tu]
       @tus.each do |tu|
@@ -63,8 +91,8 @@ class MetaMetaMetaTestCase < Minitest::Test
   end
 
   def assert_report expected, flags = %w[--seed 42], &block
-    header = clean <<-EOM
-      Run options: #{flags.map { |s| s =~ /\|/ ? s.inspect : s }.join " "}
+    header = <<~EOM
+      Run options: #{flags.map { |s| s.include?("|") ? s.inspect : s }.join " "}
 
       # Running:
 
@@ -86,15 +114,20 @@ class MetaMetaMetaTestCase < Minitest::Test
     output.gsub!(/0x[A-Fa-f0-9]+/, "0xXXX")
     output.gsub!(/ +$/, "")
 
+    file = ->(s) { s.start_with?("/") ? "FULLFILE" : "FILE" }
+
     if windows? then
       output.gsub!(/\[(?:[A-Za-z]:)?[^\]:]+:\d+\]/, "[FILE:LINE]")
-      output.gsub!(/^(\s+)(?:[A-Za-z]:)?[^:]+:\d+:in/, '\1FILE:LINE:in')
+      output.gsub!(/^(\s+)(?:[A-Za-z]:)?[^:]+:\d+:in [`']/, '\1FILE:LINE:in \'')
     else
-      output.gsub!(/\[[^\]:]+:\d+\]/, "[FILE:LINE]")
-      output.gsub!(/^(\s+)[^:]+:\d+:in/, '\1FILE:LINE:in')
+      output.gsub!(/\[([^\]:]+):\d+\]/)         {     "[#{file[$1]}:LINE]"   }
+      output.gsub!(/^(\s+)([^:]+):\d+:in [`']/) { "#{$1}#{file[$2]}:LINE:in '" }
     end
 
-    output.gsub!(/( at )[^:]+:\d+/, '\1[FILE:LINE]')
+    output.gsub!(/in [`']block in (?:([^']+)[#.])?/, "in 'block in")
+    output.gsub!(/in [`'](?:([^']+)[#.])?/, "in '")
+
+    output.gsub!(/( at )([^:]+):\d+/) { "#{$1}[#{file[$2]}:LINE]" } # eval?
 
     output
   end
@@ -110,7 +143,7 @@ class MetaMetaMetaTestCase < Minitest::Test
 
   def setup
     super
-    srand 42
+    Minitest.seed = 42
     Minitest::Test.reset
     @tu = nil
   end

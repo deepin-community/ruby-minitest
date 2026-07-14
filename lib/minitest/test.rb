@@ -18,6 +18,10 @@ module Minitest
 
     PASSTHROUGH_EXCEPTIONS = [NoMemoryError, SignalException, SystemExit] # :nodoc:
 
+    SETUP_METHODS = %w[ before_setup setup after_setup ] # :nodoc:
+
+    TEARDOWN_METHODS = %w[ before_teardown teardown after_teardown ] # :nodoc:
+
     # :stopdoc:
     class << self; attr_accessor :io_lock; end
     self.io_lock = Mutex.new
@@ -48,9 +52,10 @@ module Minitest
     end
 
     ##
-    # Call this at the top of your tests when you want to run your
-    # tests in parallel. In doing so, you're admitting that you rule
-    # and your tests are awesome.
+    # Call this at the top of your tests (inside the +Minitest::Test+
+    # subclass or +describe+ block) when you want to run your tests in
+    # parallel. In doing so, you're admitting that you rule and your
+    # tests are awesome.
 
     def self.parallelize_me!
       include Minitest::Parallel::Test
@@ -67,8 +72,8 @@ module Minitest
 
       case self.test_order
       when :random, :parallel then
-        max = methods.size
-        methods.sort.sort_by { rand max }
+        srand Minitest.seed
+        methods.sort.shuffle
       when :alpha, :sorted then
         methods.sort
       else
@@ -77,31 +82,21 @@ module Minitest
     end
 
     ##
-    # Defines the order to run tests (:random by default). Override
-    # this or use a convenience method to change it for your tests.
-
-    def self.test_order
-      :random
-    end
-
-    TEARDOWN_METHODS = %w[ before_teardown teardown after_teardown ] # :nodoc:
-
-    ##
     # Runs a single test with setup/teardown hooks.
 
     def run
-      with_info_handler do
-        time_it do
-          capture_exceptions do
-            before_setup; setup; after_setup
-
-            self.send self.name
+      time_it do
+        capture_exceptions do
+          SETUP_METHODS.each do |hook|
+            self.send hook
           end
 
-          TEARDOWN_METHODS.each do |hook|
-            capture_exceptions do
-              self.send hook
-            end
+          self.send self.name
+        end
+
+        TEARDOWN_METHODS.each do |hook|
+          capture_exceptions do
+            self.send hook
           end
         end
       end
@@ -145,7 +140,7 @@ module Minitest
       #     end
       #   end
       #
-      #   class MiniTest::Test
+      #   class Minitest::Test
       #     include MyMinitestPlugin
       #   end
 
@@ -198,17 +193,39 @@ module Minitest
     rescue Assertion => e
       self.failures << e
     rescue Exception => e
-      self.failures << UnexpectedError.new(e)
+      self.failures << UnexpectedError.new(sanitize_exception e)
     end
 
-    def with_info_handler &block # :nodoc:
-      t0 = Minitest.clock_time
+    def sanitize_exception e # :nodoc:
+      Marshal.dump e
+      e                                         # good: use as-is
+    rescue
+      neuter_exception e
+    end
 
-      handler = lambda do
-        warn "\nCurrent: %s#%s %.2fs" % [self.class, self.name, Minitest.clock_time - t0]
+    def neuter_exception e # :nodoc:
+      bt = e.backtrace
+      msg = e.message.dup
+
+      new_exception e.class, msg, bt            # e.class can be a problem...
+    rescue
+      msg.prepend "Neutered Exception #{e.class}: "
+
+      new_exception RuntimeError, msg, bt, true # but if this raises, we die
+    end
+
+    def new_exception klass, msg, bt, kill = false # :nodoc:
+      ne = klass.new msg
+      ne.set_backtrace bt
+
+      if kill then
+        ne.instance_variables.each do |v|
+          ne.remove_instance_variable v
+        end
       end
 
-      self.class.on_signal ::Minitest.info_signal, handler, &block
+      Marshal.dump ne                           # can raise TypeError
+      ne
     end
 
     include LifecycleHooks
@@ -217,4 +234,4 @@ module Minitest
   end # Test
 end
 
-require "minitest/unit" unless defined?(MiniTest) # compatibility layer only
+require "minitest/unit" if ENV["MT_COMPAT"] # compatibility layer only

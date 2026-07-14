@@ -1,4 +1,3 @@
-# encoding: utf-8
 require "minitest/metametameta"
 require "stringio"
 
@@ -12,15 +11,12 @@ class ExampleA; end
 class ExampleB < ExampleA; end
 
 describe Minitest::Spec do
-  # helps to deal with 2.4 deprecation of Fixnum for Integer
-  Int = 1.class
-
   # do not parallelize this suite... it just can"t handle it.
 
   def assert_triggered expected = "blah", klass = Minitest::Assertion
     @assertion_count += 1
 
-    e = assert_raises(klass) do
+    e = assert_raises klass do
       yield
     end
 
@@ -29,18 +25,22 @@ describe Minitest::Spec do
     msg.gsub!(/(\d\.\d{6})\d+/, '\1xxx') # normalize: ruby version, impl, platform
     msg.gsub!(/:0x[Xa-fA-F0-9]{4,}[ @].+?>/, ":0xXXXXXX@PATH>")
 
-    if expected
+    return unless expected
+
+    @assertion_count += 1
+    case expected
+    when String then
+      assert_equal expected, msg
+    when Regexp then
       @assertion_count += 1
-      case expected
-      when String then
-        assert_equal expected, msg
-      when Regexp then
-        @assertion_count += 1
-        assert_match expected, msg
-      else
-        flunk "Unknown: #{expected.inspect}"
-      end
+      assert_match expected, msg
+    else
+      flunk "Unknown: #{expected.inspect}"
     end
+  end
+
+  def assert_success spec
+    assert_equal true, spec
   end
 
   before do
@@ -62,7 +62,7 @@ describe Minitest::Spec do
   it "needs to check for file existence" do
     @assertion_count = 3
 
-    _(_(__FILE__).path_must_exist).must_equal true
+    assert_success _(__FILE__).path_must_exist
 
     assert_triggered "Expected path 'blah' to exist." do
       _("blah").path_must_exist
@@ -72,7 +72,7 @@ describe Minitest::Spec do
   it "needs to check for file non-existence" do
     @assertion_count = 3
 
-    _(_("blah").path_wont_exist).must_equal false
+    assert_success _("blah").path_wont_exist
 
     assert_triggered "Expected path '#{__FILE__}' to not exist." do
       _(__FILE__).path_wont_exist
@@ -82,7 +82,7 @@ describe Minitest::Spec do
   it "needs to be sensible about must_include order" do
     @assertion_count += 3 # must_include is 2 assertions
 
-    _(_([1, 2, 3]).must_include(2)).must_equal true
+    assert_success _([1, 2, 3]).must_include(2)
 
     assert_triggered "Expected [1, 2, 3] to include 5." do
       _([1, 2, 3]).must_include 5
@@ -96,7 +96,7 @@ describe Minitest::Spec do
   it "needs to be sensible about wont_include order" do
     @assertion_count += 3 # wont_include is 2 assertions
 
-    _(_([1, 2, 3]).wont_include(5)).must_equal false
+    assert_success _([1, 2, 3]).wont_include(5)
 
     assert_triggered "Expected [1, 2, 3] to not include 2." do
       _([1, 2, 3]).wont_include 2
@@ -133,11 +133,51 @@ describe Minitest::Spec do
     end
   end
 
+  def good_pattern
+    capture_io do # 3.0 is noisy
+      eval "[1,2,3] => [Integer, Integer, Integer]" # eval to escape parser for ruby<3
+    end
+  end
+
+  def bad_pattern
+    capture_io do # 3.0 is noisy
+      eval "[1,2,3] => [Integer, Integer]" # eval to escape parser for ruby<3
+    end
+  end
+
+  it "needs to pattern match" do
+    @assertion_count = 1
+
+    if RUBY_VERSION > "3" then
+      expect { good_pattern }.must_pattern_match
+    else
+      assert_raises NotImplementedError do
+        expect {}.must_pattern_match
+      end
+    end
+  end
+
+  it "needs to error on bad pattern match" do
+    skip unless RUBY_VERSION > "3"
+
+    @assertion_count = 1
+
+    exp = if RUBY_VERSION.start_with? "3.0"
+            "[1, 2, 3]" # terrible error message!
+          else
+            /length mismatch/
+          end
+
+    assert_triggered exp do
+      expect { bad_pattern }.must_pattern_match
+    end
+  end
+
   it "needs to ensure silence" do
     @assertion_count -= 1 # no msg
     @assertion_count += 2 # assert_output is 2 assertions
 
-    _(expect {}.must_be_silent).must_equal true
+    assert_success expect {}.must_be_silent
 
     assert_triggered "In stdout.\nExpected: \"\"\n  Actual: \"xxx\"" do
       expect { print "xxx" }.must_be_silent
@@ -152,7 +192,7 @@ describe Minitest::Spec do
     methods = Minitest::Expectations.public_instance_methods.grep(/must|wont/)
     methods.map!(&:to_s) if Symbol === methods.first
 
-    musts, wonts = methods.sort.partition { |m| m =~ /must/ }
+    musts, wonts = methods.sort.partition { |m| m.include? "must" }
 
     expected_musts = %w[must_be
                         must_be_close_to
@@ -168,14 +208,16 @@ describe Minitest::Spec do
                         must_include
                         must_match
                         must_output
+                        must_pattern_match
                         must_raise
                         must_respond_to
                         must_throw
+                        must_verify
                         path_must_exist]
 
-    bad = %w[not raise throw send output be_silent]
+    bad = %w[not raise throw send output be_silent verify]
 
-    expected_wonts = expected_musts.map { |m| m.sub(/must/, "wont") }.sort
+    expected_wonts = expected_musts.map { |m| m.sub("must", "wont") }.sort
     expected_wonts.reject! { |m| m =~ /wont_#{Regexp.union(*bad)}/ }
 
     _(musts).must_equal expected_musts
@@ -195,7 +237,7 @@ describe Minitest::Spec do
   end
 
   it "needs to verify binary messages" do
-    _(_(42).wont_be(:<, 24)).must_equal false
+    assert_success _(42).wont_be(:<, 24)
 
     assert_triggered "Expected 24 to not be < 42." do
       _(24).wont_be :<, 42
@@ -209,7 +251,7 @@ describe Minitest::Spec do
   it "needs to verify emptyness" do
     @assertion_count += 3 # empty is 2 assertions
 
-    _(_([]).must_be_empty).must_equal true
+    assert_success _([]).must_be_empty
 
     assert_triggered "Expected [42] to be empty." do
       _([42]).must_be_empty
@@ -223,7 +265,7 @@ describe Minitest::Spec do
   it "needs to verify equality" do
     @assertion_count += 1
 
-    _(_(6 * 7).must_equal(42)).must_equal true
+    assert_success _(6 * 7).must_equal(42)
 
     assert_triggered "Expected: 42\n  Actual: 54" do
       _(6 * 9).must_equal 42
@@ -239,24 +281,20 @@ describe Minitest::Spec do
   end
 
   it "needs to warn on equality with nil" do
-    @assertion_count += 1 # extra test
+    @assertion_count = 3
+    @assertion_count += 2 unless error_on_warn? # 2 extra assertions
 
-    out, err = capture_io do
-      _(_(nil).must_equal(nil)).must_equal true
+    exp = /DEPRECATED: Use assert_nil if expecting nil from .* This will fail in Minitest 6./
+
+    assert_deprecation exp do
+      assert_success _(nil).must_equal(nil)
     end
-
-    exp = "DEPRECATED: Use assert_nil if expecting nil from #{__FILE__}:#{__LINE__-3}. " \
-      "This will fail in Minitest 6.\n"
-    exp = "" if $-w.nil?
-
-    assert_empty out
-    assert_equal exp, err
   end
 
   it "needs to verify floats outside a delta" do
     @assertion_count += 1 # extra test
 
-    _(_(24).wont_be_close_to(42)).must_equal false
+    assert_success _(24).wont_be_close_to(42)
 
     assert_triggered "Expected |42 - 42.0| (0.0) to not be <= 0.001." do
       _(6 * 7.0).wont_be_close_to 42
@@ -275,7 +313,7 @@ describe Minitest::Spec do
   it "needs to verify floats outside an epsilon" do
     @assertion_count += 1 # extra test
 
-    _(_(24).wont_be_within_epsilon(42)).must_equal false
+    assert_success _(24).wont_be_within_epsilon(42)
 
     x = "0.042"
     assert_triggered "Expected |42 - 42.0| (0.0) to not be <= #{x}." do
@@ -295,7 +333,7 @@ describe Minitest::Spec do
   it "needs to verify floats within a delta" do
     @assertion_count += 1 # extra test
 
-    _(_(6.0 * 7).must_be_close_to(42.0)).must_equal true
+    assert_success _(6.0 * 7).must_be_close_to(42.0)
 
     assert_triggered "Expected |0.0 - 0.01| (0.01) to be <= 0.001." do
       _(1.0 / 100).must_be_close_to 0.0
@@ -314,7 +352,7 @@ describe Minitest::Spec do
   it "needs to verify floats within an epsilon" do
     @assertion_count += 1 # extra test
 
-    _(_(6.0 * 7).must_be_within_epsilon(42.0)).must_equal true
+    assert_success _(6.0 * 7).must_be_within_epsilon(42.0)
 
     assert_triggered "Expected |0.0 - 0.01| (0.01) to be <= 0.0." do
       _(1.0 / 100).must_be_within_epsilon 0.0
@@ -330,7 +368,7 @@ describe Minitest::Spec do
   end
 
   it "needs to verify identity" do
-    _(_(1).must_be_same_as(1)).must_equal true
+    assert_success _(1).must_be_same_as(1)
 
     assert_triggered "Expected 1 (oid=N) to be the same as 2 (oid=N)." do
       _(1).must_be_same_as 2
@@ -343,8 +381,8 @@ describe Minitest::Spec do
 
   it "needs to verify inequality" do
     @assertion_count += 2
-    _(_(42).wont_equal(6 * 9)).must_equal false
-    _(_(proc {}).wont_equal(42)).must_equal false
+    assert_success _(42).wont_equal(6 * 9)
+    assert_success _(proc {}).wont_equal(42)
 
     assert_triggered "Expected 1 to not be equal to 1." do
       _(1).wont_equal 1
@@ -356,43 +394,43 @@ describe Minitest::Spec do
   end
 
   it "needs to verify instances of a class" do
-    _(_(42).wont_be_instance_of(String)).must_equal false
+    assert_success _(42).wont_be_instance_of(String)
 
-    assert_triggered "Expected 42 to not be a kind of #{Int.name}." do
-      _(42).wont_be_kind_of Int
+    assert_triggered "Expected 42 to not be a kind of Integer." do
+      _(42).wont_be_kind_of Integer
     end
 
-    assert_triggered "msg.\nExpected 42 to not be an instance of #{Int.name}." do
-      _(42).wont_be_instance_of Int, "msg"
+    assert_triggered "msg.\nExpected 42 to not be an instance of Integer." do
+      _(42).wont_be_instance_of Integer, "msg"
     end
   end
 
   it "needs to verify kinds of a class" do
     @assertion_count += 2
 
-    _(_(42).wont_be_kind_of(String)).must_equal false
-    _(_(proc {}).wont_be_kind_of(String)).must_equal false
+    assert_success _(42).wont_be_kind_of(String)
+    assert_success _(proc {}).wont_be_kind_of(String)
 
-    assert_triggered "Expected 42 to not be a kind of #{Int.name}." do
-      _(42).wont_be_kind_of Int
+    assert_triggered "Expected 42 to not be a kind of Integer." do
+      _(42).wont_be_kind_of Integer
     end
 
-    assert_triggered "msg.\nExpected 42 to not be a kind of #{Int.name}." do
-      _(42).wont_be_kind_of Int, "msg"
+    assert_triggered "msg.\nExpected 42 to not be a kind of Integer." do
+      _(42).wont_be_kind_of Integer, "msg"
     end
   end
 
   it "needs to verify kinds of objects" do
     @assertion_count += 3 # extra test
 
-    _(_(6 * 7).must_be_kind_of(Int)).must_equal true
-    _(_(6 * 7).must_be_kind_of(Numeric)).must_equal true
+    assert_success _(6 * 7).must_be_kind_of(Integer)
+    assert_success _(6 * 7).must_be_kind_of(Numeric)
 
-    assert_triggered "Expected 42 to be a kind of String, not #{Int.name}." do
+    assert_triggered "Expected 42 to be a kind of String, not Integer." do
       _(6 * 7).must_be_kind_of String
     end
 
-    assert_triggered "msg.\nExpected 42 to be a kind of String, not #{Int.name}." do
+    assert_triggered "msg.\nExpected 42 to be a kind of String, not Integer." do
       _(6 * 7).must_be_kind_of String, "msg"
     end
 
@@ -405,7 +443,7 @@ describe Minitest::Spec do
   it "needs to verify mismatch" do
     @assertion_count += 3 # match is 2
 
-    _(_("blah").wont_match(/\d+/)).must_equal false
+    assert_success _("blah").wont_match(/\d+/)
 
     assert_triggered "Expected /\\w+/ to not match \"blah\"." do
       _("blah").wont_match(/\w+/)
@@ -417,7 +455,7 @@ describe Minitest::Spec do
   end
 
   it "needs to verify nil" do
-    _(_(nil).must_be_nil).must_equal true
+    assert_success _(nil).must_be_nil
 
     assert_triggered "Expected 42 to be nil." do
       _(42).must_be_nil
@@ -431,7 +469,7 @@ describe Minitest::Spec do
   it "needs to verify non-emptyness" do
     @assertion_count += 3 # empty is 2 assertions
 
-    _(_(["some item"]).wont_be_empty).must_equal false
+    assert_success _(["some item"]).wont_be_empty
 
     assert_triggered "Expected [] to not be empty." do
       _([]).wont_be_empty
@@ -443,7 +481,7 @@ describe Minitest::Spec do
   end
 
   it "needs to verify non-identity" do
-    _(_(1).wont_be_same_as(2)).must_equal false
+    assert_success _(1).wont_be_same_as(2)
 
     assert_triggered "Expected 1 (oid=N) to not be the same as 1 (oid=N)." do
       _(1).wont_be_same_as 1
@@ -455,7 +493,7 @@ describe Minitest::Spec do
   end
 
   it "needs to verify non-nil" do
-    _(_(42).wont_be_nil).must_equal false
+    assert_success _(42).wont_be_nil
 
     assert_triggered "Expected nil to not be nil." do
       _(nil).wont_be_nil
@@ -467,7 +505,7 @@ describe Minitest::Spec do
   end
 
   it "needs to verify objects not responding to a message" do
-    _(_("").wont_respond_to(:woot!)).must_equal false
+    assert_success _("").wont_respond_to(:woot!)
 
     assert_triggered "Expected \"\" to not respond to to_s." do
       _("").wont_respond_to :to_s
@@ -481,7 +519,7 @@ describe Minitest::Spec do
   it "needs to verify output in stderr" do
     @assertion_count -= 1 # no msg
 
-    _(expect { $stderr.print "blah" }.must_output(nil, "blah")).must_equal true
+    assert_success expect { $stderr.print "blah" }.must_output(nil, "blah")
 
     assert_triggered "In stderr.\nExpected: \"blah\"\n  Actual: \"xxx\"" do
       expect { $stderr.print "xxx" }.must_output(nil, "blah")
@@ -491,7 +529,7 @@ describe Minitest::Spec do
   it "needs to verify output in stdout" do
     @assertion_count -= 1 # no msg
 
-    _(expect { print "blah" }.must_output("blah")).must_equal true
+    assert_success expect { print "blah" }.must_output("blah")
 
     assert_triggered "In stdout.\nExpected: \"blah\"\n  Actual: \"xxx\"" do
       expect { print "xxx" }.must_output("blah")
@@ -501,7 +539,7 @@ describe Minitest::Spec do
   it "needs to verify regexp matches" do
     @assertion_count += 3 # must_match is 2 assertions
 
-    _(_("blah").must_match(/\w+/)).must_equal true
+    assert_kind_of MatchData, _("blah").must_match(/\w+/)
 
     assert_triggered "Expected /\\d+/ to match \"blah\"." do
       _("blah").must_match(/\d+/)
@@ -531,7 +569,8 @@ describe Minitest::Spec do
 
     it "can NOT use must_equal in a thread. It must use expect in a thread" do
       skip "N/A" if ENV["MT_NO_EXPECTATIONS"]
-      assert_raises RuntimeError do
+
+      assert_raises RuntimeError, Minitest::UnexpectedWarning do
         capture_io do
           Thread.new { (1 + 1).must_equal 2 }.join
         end
@@ -541,38 +580,60 @@ describe Minitest::Spec do
     it "fails gracefully when expectation used outside of `it`" do
       skip "N/A" if ENV["MT_NO_EXPECTATIONS"]
 
-      @assertion_count += 1
+      @assertion_count += 2 # assert_match is compound
 
-      e = assert_raises RuntimeError do
+      e = assert_raises RuntimeError, Minitest::UnexpectedWarning do
         capture_io do
           Thread.new { # forces ctx to be nil
-            describe("woot") do
+            describe "woot" do
               (1 + 1).must_equal 2
             end
           }.join
         end
       end
 
-      assert_equal "Calling #must_equal outside of test.", e.message
+      exp = "Calling #must_equal outside of test."
+      exp = "DEPRECATED: global use of must_equal from" if error_on_warn?
+
+      assert_match exp, e.message
     end
 
     it "deprecates expectation used without _" do
       skip "N/A" if ENV["MT_NO_EXPECTATIONS"]
 
-      @assertion_count += 3
+      @assertion_count += 1
+      @assertion_count += 2 unless error_on_warn?
 
       exp = /DEPRECATED: global use of must_equal from/
 
-      assert_output "", exp do
+      assert_deprecation exp do
         (1 + 1).must_equal 2
+      end
+    end
+
+    # https://github.com/seattlerb/minitest/issues/837
+    # https://github.com/rails/rails/pull/39304
+    it "deprecates expectation used without _ with empty backtrace_filter" do
+      skip "N/A" if ENV["MT_NO_EXPECTATIONS"]
+
+      @assertion_count += 1
+      @assertion_count += 2 unless error_on_warn?
+
+      exp = /DEPRECATED: global use of must_equal from/
+
+      with_empty_backtrace_filter do
+        assert_deprecation exp do
+          (1 + 1).must_equal 2
+        end
       end
     end
   end
 
   it "needs to verify throw" do
-    @assertion_count += 2 # 2 extra tests
+    @assertion_count += 4 # 2 extra tests
 
-    _(expect { throw :blah }.must_throw(:blah)).must_equal true
+    assert_nil expect { throw :blah }.must_throw(:blah)
+    assert_equal 42, expect { throw :blah, 42 }.must_throw(:blah)
 
     assert_triggered "Expected :blah to have been thrown." do
       expect {}.must_throw :blah
@@ -592,9 +653,9 @@ describe Minitest::Spec do
   end
 
   it "needs to verify types of objects" do
-    _(_(6 * 7).must_be_instance_of(Int)).must_equal true
+    assert_success _(6 * 7).must_be_instance_of(Integer)
 
-    exp = "Expected 42 to be an instance of String, not #{Int.name}."
+    exp = "Expected 42 to be an instance of String, not Integer."
 
     assert_triggered exp do
       _(6 * 7).must_be_instance_of String
@@ -608,7 +669,7 @@ describe Minitest::Spec do
   it "needs to verify using any (negative) predicate" do
     @assertion_count -= 1 # doesn"t take a message
 
-    _(_("blah").wont_be(:empty?)).must_equal false
+    assert_success _("blah").wont_be(:empty?)
 
     assert_triggered "Expected \"\" to not be empty?." do
       _("").wont_be :empty?
@@ -618,17 +679,17 @@ describe Minitest::Spec do
   it "needs to verify using any binary operator" do
     @assertion_count -= 1 # no msg
 
-    _(_(41).must_be(:<, 42)).must_equal true
+    assert_success _(41).must_be(:<, 42)
 
     assert_triggered "Expected 42 to be < 41." do
-      _(42).must_be(:<, 41)
+      _(42).must_be :<, 41
     end
   end
 
   it "needs to verify using any predicate" do
     @assertion_count -= 1 # no msg
 
-    _(_("").must_be(:empty?)).must_equal true
+    assert_success _("").must_be(:empty?)
 
     assert_triggered "Expected \"blah\" to be empty?." do
       _("blah").must_be :empty?
@@ -636,13 +697,13 @@ describe Minitest::Spec do
   end
 
   it "needs to verify using respond_to" do
-    _(_(42).must_respond_to(:+)).must_equal true
+    assert_success _(42).must_respond_to(:+)
 
-    assert_triggered "Expected 42 (#{Int.name}) to respond to #clear." do
+    assert_triggered "Expected 42 (Integer) to respond to #clear." do
       _(42).must_respond_to :clear
     end
 
-    assert_triggered "msg.\nExpected 42 (#{Int.name}) to respond to #clear." do
+    assert_triggered "msg.\nExpected 42 (Integer) to respond to #clear." do
       _(42).must_respond_to :clear, "msg"
     end
   end
@@ -689,9 +750,9 @@ describe Minitest::Spec, :let do
   it "doesn't raise an error if it is just another let" do
     v = proc do
       describe :outer do
-        let(:bar)
+        let :bar
         describe :inner do
-          let(:bar)
+          let :bar
         end
       end
       :good
@@ -723,6 +784,10 @@ describe Minitest::Spec, :subject do
 end
 
 class TestMetaStatic < Minitest::Test
+  def assert_method_count expected, klass
+    assert_equal expected, klass.public_instance_methods.grep(/^test_/).count
+  end
+
   def test_children
     Minitest::Spec.children.clear # prevents parallel run
 
@@ -756,8 +821,8 @@ class TestMetaStatic < Minitest::Test
       end
     end
 
-    assert_equal 1, outer.public_instance_methods.grep(/^test_/).count
-    assert_equal 1, inner.public_instance_methods.grep(/^test_/).count
+    assert_method_count 1, outer
+    assert_method_count 1, inner
   end
 
   def test_it_wont_add_test_methods_to_children
@@ -771,13 +836,17 @@ class TestMetaStatic < Minitest::Test
       end
     end
 
-    assert_equal 1, outer.public_instance_methods.grep(/^test_/).count
-    assert_equal 0, inner.public_instance_methods.grep(/^test_/).count
+    assert_method_count 1, outer
+    assert_method_count 0, inner
   end
 end
 
 class TestMeta < MetaMetaMetaTestCase
   # do not call parallelize_me! here because specs use register_spec_type globally
+
+  def assert_defined_methods expected, klass
+    assert_equal expected, klass.instance_methods(false).sort.map(&:to_s)
+  end
 
   def util_structure
     y = z = nil
@@ -851,7 +920,7 @@ class TestMeta < MetaMetaMetaTestCase
       end
     end
 
-    test_name = spec_class.instance_methods.sort.grep(/test/).first
+    test_name = spec_class.instance_methods.sort.grep(/test_/).first
 
     spec = spec_class.new test_name
 
@@ -884,6 +953,23 @@ class TestMeta < MetaMetaMetaTestCase
     assert_equal "ExampleB::random_method", spec_b.name
   end
 
+  def test_name_inside_class
+    spec_a = nil
+    spec_b = nil
+    inside_class_example = Class.new Minitest::Spec
+    Object.const_set :InsideClassExample, inside_class_example
+    inside_class_example.class_eval do
+      spec_a = describe "a" do
+        spec_b = describe "b" do; end
+      end
+    end
+
+    assert_equal "InsideClassExample::a", spec_a.name
+    assert_equal "InsideClassExample::a::b", spec_b.name
+  ensure
+    Object.send :remove_const, :InsideClassExample
+  end
+
   def test_structure
     x, y, z, * = util_structure
 
@@ -900,9 +986,9 @@ class TestMeta < MetaMetaMetaTestCase
     inner_methods2 = inner_methods1 +
       %w[test_0002_anonymous test_0003_anonymous]
 
-    assert_equal top_methods,    x.instance_methods(false).sort.map(&:to_s)
-    assert_equal inner_methods1, y.instance_methods(false).sort.map(&:to_s)
-    assert_equal inner_methods2, z.instance_methods(false).sort.map(&:to_s)
+    assert_defined_methods top_methods, x
+    assert_defined_methods inner_methods1, y
+    assert_defined_methods inner_methods2, z
   end
 
   def test_structure_postfix_it
@@ -919,8 +1005,8 @@ class TestMeta < MetaMetaMetaTestCase
       it "inner-it" do end
     end
 
-    assert_equal %w[test_0001_inner-it], y.instance_methods(false).map(&:to_s)
-    assert_equal %w[test_0001_inner-it], z.instance_methods(false).map(&:to_s)
+    assert_defined_methods %w[test_0001_inner-it], y
+    assert_defined_methods %w[test_0001_inner-it], z
   end
 
   def test_setup_teardown_behavior
@@ -946,14 +1032,15 @@ class TestMeta < MetaMetaMetaTestCase
       z = describe "second thingy" do end
     end
 
-    test_methods = ["test_0001_top level it",
-                    "test_0002_не латинские &いった α, β, γ, δ, ε hello!!! world",
+    test_methods = [
+                     "test_0001_top level it",
+                     "test_0002_не латинские &いった α, β, γ, δ, ε hello!!! world",
                    ].sort
 
     assert_equal test_methods, [x1, x2]
-    assert_equal test_methods, x.instance_methods.grep(/^test/).map(&:to_s).sort
-    assert_equal [], y.instance_methods.grep(/^test/)
-    assert_equal [], z.instance_methods.grep(/^test/)
+    assert_defined_methods test_methods, x
+    assert_defined_methods [], y
+    assert_defined_methods [], z
   end
 
   def test_structure_subclasses
@@ -1037,5 +1124,40 @@ class ValueMonadTest < Minitest::Test
 
   def test_value_monad_expect_alias
     assert_equal "c", struct.expect
+  end
+end
+
+describe Minitest::Spec, :infect_an_assertion do
+  class << self
+    attr_accessor :infect_mock
+  end
+
+  def assert_infects exp, act, msg = nil, foo: nil, bar: nil
+    self.class.infect_mock.assert_infects exp, act, msg, foo: foo, bar: bar
+  end
+
+  infect_an_assertion :assert_infects, :must_infect
+  infect_an_assertion :assert_infects, :must_infect_without_flipping, :dont_flip
+
+  it "infects assertions with kwargs" do
+    mock = Minitest::Mock.new
+    mock.expect :assert_infects, true, [:exp, :act, nil], foo: :foo, bar: :bar
+
+    self.class.infect_mock = mock
+
+    _(:act).must_infect :exp, foo: :foo, bar: :bar
+
+    assert_mock mock
+  end
+
+  it "infects assertions with kwargs (dont_flip)" do
+    mock = Minitest::Mock.new
+    mock.expect :assert_infects, true, [:act, :exp, nil], foo: :foo, bar: :bar
+
+    self.class.infect_mock = mock
+
+    _(:act).must_infect_without_flipping :exp, foo: :foo, bar: :bar
+
+    assert_mock mock
   end
 end

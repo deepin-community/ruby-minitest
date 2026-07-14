@@ -47,8 +47,6 @@ module Minitest
 
     def self.bench_linear min, max, step = 10
       (min..max).step(step).to_a
-    rescue LocalJumpError # 1.8.6
-      r = []; (min..max).step(step) { |n| r << n }; r
     end
 
     ##
@@ -83,7 +81,7 @@ module Minitest
     def assert_performance validation, &work
       range = self.class.bench_range
 
-      io.print "#{self.name}"
+      io.print self.name
 
       times = []
 
@@ -217,7 +215,7 @@ module Minitest
     ##
     # Takes an array of x/y pairs and calculates the general R^2 value.
     #
-    # See: http://en.wikipedia.org/wiki/Coefficient_of_determination
+    # See: https://en.wikipedia.org/wiki/Coefficient_of_determination
 
     def fit_error xys
       y_bar  = sigma(xys) { |_, y| y } / xys.size.to_f
@@ -232,11 +230,11 @@ module Minitest
     #
     # Takes x and y values and returns [a, b, r^2].
     #
-    # See: http://mathworld.wolfram.com/LeastSquaresFittingExponential.html
+    # See: https://mathworld.wolfram.com/LeastSquaresFittingExponential.html
 
     def fit_exponential xs, ys
       n     = xs.size
-      xys   = xs.zip(ys)
+      xys   = xs.zip ys
       sxlny = sigma(xys) { |x, y| x * Math.log(y) }
       slny  = sigma(xys) { |_, y| Math.log(y)     }
       sx2   = sigma(xys) { |x, _| x * x           }
@@ -254,11 +252,11 @@ module Minitest
     #
     # Takes x and y values and returns [a, b, r^2].
     #
-    # See: http://mathworld.wolfram.com/LeastSquaresFittingLogarithmic.html
+    # See: https://mathworld.wolfram.com/LeastSquaresFittingLogarithmic.html
 
     def fit_logarithmic xs, ys
       n     = xs.size
-      xys   = xs.zip(ys)
+      xys   = xs.zip ys
       slnx2 = sigma(xys) { |x, _| Math.log(x) ** 2 }
       slnx  = sigma(xys) { |x, _| Math.log(x)      }
       sylnx = sigma(xys) { |x, y| y * Math.log(x)  }
@@ -276,11 +274,11 @@ module Minitest
     #
     # Takes x and y values and returns [a, b, r^2].
     #
-    # See: http://mathworld.wolfram.com/LeastSquaresFitting.html
+    # See: https://mathworld.wolfram.com/LeastSquaresFitting.html
 
     def fit_linear xs, ys
       n   = xs.size
-      xys = xs.zip(ys)
+      xys = xs.zip ys
       sx  = sigma xs
       sy  = sigma ys
       sx2 = sigma(xs)  { |x|   x ** 2 }
@@ -298,11 +296,11 @@ module Minitest
     #
     # Takes x and y values and returns [a, b, r^2].
     #
-    # See: http://mathworld.wolfram.com/LeastSquaresFittingPowerLaw.html
+    # See: https://mathworld.wolfram.com/LeastSquaresFittingPowerLaw.html
 
     def fit_power xs, ys
       n       = xs.size
-      xys     = xs.zip(ys)
+      xys     = xs.zip ys
       slnxlny = sigma(xys) { |x, y| Math.log(x) * Math.log(y) }
       slnx    = sigma(xs)  { |x   | Math.log(x)               }
       slny    = sigma(ys)  { |   y| Math.log(y)               }
@@ -323,7 +321,7 @@ module Minitest
 
     def sigma enum, &block
       enum = enum.map(&block) if block
-      enum.inject { |sum, n| sum + n }
+      enum.sum
     end
 
     ##
@@ -418,7 +416,6 @@ module Minitest
         assert_performance_exponential threshold, &work
       end
     end
-
 
     ##
     # Create a benchmark that verifies that the performance is logarithmic.

@@ -8,9 +8,9 @@ module Minitest # :nodoc:
   # All mock objects are an instance of Mock
 
   class Mock
-    alias :__respond_to? :respond_to?
+    alias __respond_to? respond_to?
 
-    overridden_methods = %w[
+    overridden_methods = %i[
       ===
       class
       inspect
@@ -23,18 +23,31 @@ module Minitest # :nodoc:
       to_s
     ]
 
+    overridden_methods << :singleton_method_added if defined?(::DEBUGGER__)
+
     instance_methods.each do |m|
-      undef_method m unless overridden_methods.include?(m.to_s) || m =~ /^__/
+      undef_method m unless overridden_methods.include?(m) || m =~ /^__/
     end
 
     overridden_methods.map(&:to_sym).each do |method_id|
-      define_method method_id do |*args, &b|
+      old_w, $-w = $-w, nil
+      define_method method_id do |*args, **kwargs, &b|
         if @expected_calls.key? method_id then
-          method_missing(method_id, *args, &b)
+          if kwargs.empty? then # FIX: drop this after 2.7 dead
+            method_missing(method_id, *args, &b)
+          else
+            method_missing(method_id, *args, **kwargs, &b)
+          end
         else
-          super(*args, &b)
+          if kwargs.empty? then # FIX: drop this after 2.7 dead
+            super(*args, &b)
+          else
+            super(*args, **kwargs, &b)
+          end
         end
       end
+    ensure
+      $-w = old_w
     end
 
     def initialize delegator = nil # :nodoc:
@@ -43,9 +56,11 @@ module Minitest # :nodoc:
       @actual_calls   = Hash.new { |calls, name| calls[name] = [] }
     end
 
+    @@KW_WARNED = false # :nodoc:
+
     ##
-    # Expect that method +name+ is called, optionally with +args+ or a
-    # +blk+, and returns +retval+.
+    # Expect that method +name+ is called, optionally with +args+ (and
+    # +kwargs+ or a +blk+), and returns +retval+.
     #
     #   @mock.expect(:meaning_of_life, 42)
     #   @mock.meaning_of_life # => 42
@@ -78,15 +93,31 @@ module Minitest # :nodoc:
     #   @mock.ordinal_increment # => raises MockExpectationError "No more expects available for :ordinal_increment"
     #
 
-    def expect name, retval, args = [], &blk
+    def expect name, retval, args = [], **kwargs, &blk
       name = name.to_sym
 
-      if block_given?
+      if blk then
         raise ArgumentError, "args ignored when block given" unless args.empty?
+        raise ArgumentError, "kwargs ignored when block given" unless kwargs.empty?
         @expected_calls[name] << { :retval => retval, :block => blk }
       else
         raise ArgumentError, "args must be an array" unless Array === args
-        @expected_calls[name] << { :retval => retval, :args => args }
+
+        if ENV["MT_KWARGS_HAC\K"] && (Hash === args.last ||
+                                      Hash ==  args.last) then
+          if kwargs.empty? then
+            kwargs = args.pop
+          else
+            unless @@KW_WARNED then
+              from = caller(1..1).first
+              warn "Using MT_KWARGS_HAC\K yet passing kwargs. From #{from}"
+              @@KW_WARNED = true
+            end
+          end
+        end
+
+        @expected_calls[name] <<
+          { :retval => retval, :args => args, :kwargs => kwargs }
       end
       self
     end
@@ -94,7 +125,13 @@ module Minitest # :nodoc:
     def __call name, data # :nodoc:
       case data
       when Hash then
-        "#{name}(#{data[:args].inspect[1..-2]}) => #{data[:retval].inspect}"
+        args   = data[:args].inspect[1..-2]
+        kwargs = data[:kwargs]
+        if kwargs && !kwargs.empty? then
+          args << ", " unless args.empty?
+          args << kwargs.inspect[1..-2]
+        end
+        "#{name}(#{args}) => #{data[:retval].inspect}"
       else
         data.map { |d| __call name, d }.join ", "
       end
@@ -107,18 +144,22 @@ module Minitest # :nodoc:
 
     def verify
       @expected_calls.each do |name, expected|
-        actual = @actual_calls.fetch(name, nil)
-        raise MockExpectationError, "expected #{__call name, expected[0]}" unless actual
-        raise MockExpectationError, "expected #{__call name, expected[actual.size]}, got [#{__call name, actual}]" if
+        actual = @actual_calls.fetch name, nil # defaults to []
+        raise MockExpectationError, "Expected #{__call name, expected[0]}" unless actual
+        raise MockExpectationError, "Expected #{__call name, expected[actual.size]}, got [#{__call name, actual}]" if
           actual.size < expected.size
       end
       true
     end
 
-    def method_missing sym, *args, &block # :nodoc:
-      unless @expected_calls.key?(sym) then
+    def method_missing sym, *args, **kwargs, &block # :nodoc:
+      unless @expected_calls.key? sym then
         if @delegator && @delegator.respond_to?(sym)
-          return @delegator.public_send(sym, *args, &block)
+          if kwargs.empty? then # FIX: drop this after 2.7 dead
+            return @delegator.public_send(sym, *args, &block)
+          else
+            return @delegator.public_send(sym, *args, **kwargs, &block)
+          end
         else
           raise NoMethodError, "unmocked method %p, expected one of %p" %
             [sym, @expected_calls.keys.sort_by(&:to_s)]
@@ -129,41 +170,69 @@ module Minitest # :nodoc:
       expected_call = @expected_calls[sym][index]
 
       unless expected_call then
-        raise MockExpectationError, "No more expects available for %p: %p" %
-          [sym, args]
+        raise MockExpectationError, "No more expects available for %p: %p %p" %
+          [sym, args, kwargs]
       end
 
-      expected_args, retval, val_block =
-        expected_call.values_at(:args, :retval, :block)
+      expected_args, expected_kwargs, retval, val_block =
+        expected_call.values_at :args, :kwargs, :retval, :block
+
+      expected_kwargs = kwargs.to_h { |ak, av| [ak, Object] } if
+        Hash == expected_kwargs
 
       if val_block then
         # keep "verify" happy
         @actual_calls[sym] << expected_call
 
-        raise MockExpectationError, "mocked method %p failed block w/ %p" %
-          [sym, args] unless val_block.call(*args, &block)
+        raise MockExpectationError, "mocked method %p failed block w/ %p %p" %
+          [sym, args, kwargs] unless val_block.call(*args, **kwargs, &block)
 
         return retval
       end
 
       if expected_args.size != args.size then
-        raise ArgumentError, "mocked method %p expects %d arguments, got %d" %
-          [sym, expected_args.size, args.size]
+        raise ArgumentError, "mocked method %p expects %d arguments, got %p" %
+          [sym, expected_args.size, args]
       end
 
-      zipped_args = expected_args.zip(args)
+      if expected_kwargs.size != kwargs.size then
+        raise ArgumentError, "mocked method %p expects %d keyword arguments, got %p" %
+          [sym, expected_kwargs.size, kwargs]
+      end
+
+      zipped_args = expected_args.zip args
       fully_matched = zipped_args.all? { |mod, a|
         mod === a or mod == a
       }
 
       unless fully_matched then
-        raise MockExpectationError, "mocked method %p called with unexpected arguments %p" %
-          [sym, args]
+        fmt = "mocked method %p called with unexpected arguments %p"
+        raise MockExpectationError, fmt % [sym, args]
+      end
+
+      unless expected_kwargs.keys.sort == kwargs.keys.sort then
+        fmt = "mocked method %p called with unexpected keywords %p vs %p"
+        raise MockExpectationError, fmt % [sym, expected_kwargs.keys, kwargs.keys]
+      end
+
+      zipped_kwargs = expected_kwargs.to_h { |ek, ev|
+        av = kwargs[ek]
+        [ek, [ev, av]]
+      }
+
+      fully_matched = zipped_kwargs.all? { |ek, (ev, av)|
+        ev === av or ev == av
+      }
+
+      unless fully_matched then
+        fmt = "mocked method %p called with unexpected keyword arguments %p vs %p"
+        raise MockExpectationError, fmt % [sym, expected_kwargs, kwargs]
       end
 
       @actual_calls[sym] << {
         :retval => retval,
-        :args => zipped_args.map! { |mod, a| mod === a ? mod : a },
+        :args   => zipped_args.map { |e, a| e === a ? e : a },
+        :kwargs => zipped_kwargs.to_h { |k, (e, a)| [k, e === a ? e : a] },
       }
 
       retval
@@ -172,18 +241,33 @@ module Minitest # :nodoc:
     def respond_to? sym, include_private = false # :nodoc:
       return true if @expected_calls.key? sym.to_sym
       return true if @delegator && @delegator.respond_to?(sym, include_private)
-      __respond_to?(sym, include_private)
+      __respond_to? sym, include_private
     end
   end
 end
 
 module Minitest::Assertions
   ##
-  # Assert that the mock verifies correctly.
+  # Assert that the mock verifies correctly and fail if not.
 
-  def assert_mock mock
+  def assert_mock mock, msg = nil
     assert mock.verify
+  rescue MockExpectationError => e
+    msg = message(msg) { e.message }
+    flunk msg
   end
+end
+
+module Minitest::Expectations
+  ##
+  # See Minitest::Assertions#assert_mock.
+  #
+  #    _(collection).must_verify
+  #
+  # :method: must_verify
+
+  infect_an_assertion :assert_mock, :must_verify, :unary if
+    defined?(infect_an_assertion)
 end
 
 ##
@@ -207,31 +291,54 @@ class Object
   #         assert obj_under_test.stale?
   #       end
   #     end
-  #
+  #--
+  # NOTE: keyword args in callables are NOT checked for correctness
+  # against the existing method. Too many edge cases to be worth it.
 
-  def stub name, val_or_callable, *block_args
+  def stub name, val_or_callable, *block_args, **block_kwargs, &block
     new_name = "__minitest_stub__#{name}"
 
     metaclass = class << self; self; end
 
     if respond_to? name and not methods.map(&:to_s).include? name.to_s then
-      metaclass.send :define_method, name do |*args|
-        super(*args)
+      metaclass.send :define_method, name do |*args, **kwargs|
+        super(*args, **kwargs)
       end
     end
 
     metaclass.send :alias_method, new_name, name
 
-    metaclass.send :define_method, name do |*args, &blk|
-      if val_or_callable.respond_to? :call then
-        val_or_callable.call(*args, &blk)
-      else
-        blk.call(*block_args) if blk
-        val_or_callable
+    if ENV["MT_KWARGS_HAC\K"] then
+      metaclass.send :define_method, name do |*args, &blk|
+        if val_or_callable.respond_to? :call then
+          val_or_callable.call(*args, &blk)
+        else
+          blk.call(*block_args, **block_kwargs) if blk
+          val_or_callable
+        end
+      end
+    else
+      metaclass.send :define_method, name do |*args, **kwargs, &blk|
+        if val_or_callable.respond_to? :call then
+          if kwargs.empty? then # FIX: drop this after 2.7 dead
+            val_or_callable.call(*args, &blk)
+          else
+            val_or_callable.call(*args, **kwargs, &blk)
+          end
+        else
+          if blk then
+            if block_kwargs.empty? then # FIX: drop this after 2.7 dead
+              blk.call(*block_args)
+            else
+              blk.call(*block_args, **block_kwargs)
+            end
+          end
+          val_or_callable
+        end
       end
     end
 
-    yield self
+    block[self]
   ensure
     metaclass.send :undef_method, name
     metaclass.send :alias_method, name, new_name

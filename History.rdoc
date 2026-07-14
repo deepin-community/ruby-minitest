@@ -1,3 +1,318 @@
+=== 5.25.4 / 2024-12-03
+
+* 1 bug fix:
+
+  * Fix for must_verify definition if only requiring minitest/mock (but why?).
+
+=== 5.25.3 / 2024-12-03
+
+* 5 bug fixes:
+
+  * Fixed assert_mock to fail instead of raise on unmet mock expectations.
+  * Fixed assert_mock to take an optional message argument.
+  * Fixed formatting of unmet mock expectation messages.
+  * Fixed missing must_verify expectation to match assert_mock.
+  * minitest/pride: Fixed to use true colors with *-direct terminals (bk2204)
+
+=== 5.25.2 / 2024-11-21
+
+* 4 bug fixes:
+
+  * Include class name in spec name. (thomasmarshall)
+  * Fixed 'redefining object_id' warning from ruby 3.4. (mattbrictson)
+  * Minitest top-level namespace no longer includes entire contents of README.rdoc. Too much!
+  * Refactored spec's describe to more cleanly determine the superclass and name
+
+=== 5.25.1 / 2024-08-16
+
+* 2 bug fixes:
+
+  * Fix incompatibility caused by minitest-hooks & rails invading minitest internals.
+  * Revert change from =~ to match? to allow for nil if $TERM undefined.
+
+=== 5.25.0 / 2024-08-13
+
+* 2 minor enhancements:
+
+  * Fixed some inefficiencies filtering and matching (mostly backtraces).
+  * Refactored siginfo handler to reduce runtime costs. Saved ~30%!
+
+* 5 bug fixes:
+
+  * Added missing rdoc to get back to 100% coverage.
+  * Cleaning up ancient code checking for defined?(Encoding) and the like.
+  * Disambiguated some shadowed variables in minitest/compress.
+  * Fixed an ironic bug if using string-literals AND Werror.
+  * Improve description of test:slow task. (stomar)
+
+=== 5.24.1 / 2024-06-29
+
+* 1 bug fix:
+
+  * Fix the error message when an extension is invalid value. (y-yagi)
+
+=== 5.24.0 / 2024-06-18
+
+* 2 minor enhancements:
+
+  * Added Minitest.register_plugin.
+  * Extended plugin system to work with modules/classes for opt-out plugins.
+
+* 1 bug fix:
+
+  * Removed anacronism, but allow load_plugins to exit gracefully if --disable=gems.
+
+=== 5.23.1 / 2024-05-21
+
+* 1 bug fix:
+
+  * Fully qualify the Queue class to avoid conflicts with other libraries. (rafaelfranca)
+
+=== 5.23.0 / 2024-05-15
+
+* 3 minor enhancements:
+
+  * Added -Werror to raise on any warning output. (byroot)
+  * Added UnexpectedWarning as a failure summary type, added count to output if activated.
+  * Added minitest/manual_plugins.rb w/ new Minitest.load method. (tenderlove)
+
+* 2 bug fixes:
+
+  * Allow empty_run! and reporter to display summary for empty runs. (zzak)
+  * Make test task verbose using either rake's -v or -t (was just -t).
+
+=== 5.22.3 / 2024-03-13
+
+* 1 minor enhancement:
+
+  * MASSIVE improvement of minitest's pride plugin output: Frequencies doubled! Sine waves shifted!! Comments improved!!! Colors rotated!!!! (havenwood)
+
+* 3 bug fixes:
+
+  * Improved wording on Minitest::Test#parallelize_me! to clarify it goes INSIDE your test class/describe.
+  * Minor changes to tests to pass when tests ran with extra flags (eg -p).
+  * Support Ruby 3.4's new error message format. (mame)
+
+=== 5.22.2 / 2024-02-07
+
+* 1 bug fix:
+
+  * Third time's a charm? Remember: 'ensure' is almost always the
+    wrong way to go (for results... it's great for cleaning up).
+
+=== 5.22.1 / 2024-02-06
+
+* 1 bug fix:
+
+  * Don't exit non-zero if no tests ran and no filter (aka, the test file is empty).
+    (I'm starting to think the exit 1 thing for @tenderlove was a mistake...)
+
+=== 5.22.0 / 2024-02-05
+
+* 1 minor enhancement:
+
+  * Added "did you mean" output if your --name filter matches nothing. (tenderlove)
+
+* 2 bug fixes:
+
+  * Big cleanup of test filtering. Much prettier / more functional.
+  * Fix situation where Assertion#location can't find the location. (pftg)
+
+=== 5.21.2 / 2024-01-17
+
+* 1 bug fix:
+
+  * Fixed bug in Minitest::Compress#compress formatting w/ nested patterns. Now recurses properly.
+
+=== 5.21.1 / 2024-01-11
+
+* 1 bug fix:
+
+  * Rails' default backtrace filter can't currently work with caller_locations, so reverting back to caller.
+
+=== 5.21.0 / 2024-01-11
+
+* 10 minor enhancements:
+
+  * Add include_all kw arg to assert_respond_to and refute_respond_to.
+  * Added --quiet flag to skip ProgressReporter (prints the dots). Minor speedup.
+  * Added Minitest::Compress#compress and added it to UnexpectedError.
+  * Added ability to initialize BacktraceFilter w/ custom regexp.
+  * Filter failure backtraces using backtrace_filter before calculating location. (thomasmarshall)
+  * Make BacktraceFilter#filter compatible with locations (still compares strings).
+  * Optimized Assertion#location ~30%.
+  * Output relative paths for all failures/errors/backtraces.
+  * Refactored location information in assertions, now using locations.
+  * Removed thread and mutex_m dependencies. (hsbt, eregon)
+
+* 2 bug fixes:
+
+  * Drop undocumented bt arg in #skip. Dunno why that ever happened, prolly for testing?
+  * Fix mock to work with ruby debugger enabled. (keithlayne)
+
+=== 5.20.0 / 2023-09-06
+
+* 1 minor enhancement:
+
+  * Optionally allow autorun exit hook to remain active in forked child. (casperisfine)
+
+=== 5.19.0 / 2023-07-26
+
+* 2 minor enhancements:
+
+  * Add metadata lazy accessor to Runnable / Result. (matteeyah)
+  * Only load minitest/unit (aka ancient MiniTest compatibility layer) if \ENV[\"MT_COMPAT\"]
+
+* 1 bug fix:
+
+  * Minitest::TestTask enthusiastically added itself to default. (ParadoxV5)
+
+=== 5.18.1 / 2023-06-16
+
+* 3 bug fixes:
+
+  * Avoid extra string allocations when filtering tests. (tenderlove)
+  * Only mention deprecated \ENV[\'N\'] if it is an integer string.
+  * Push up test_order to Minitest::Runnable to fix minitest/hell. (koic)
+
+=== 5.18.0 / 2023-03-04
+
+* 2 major enhancements:
+
+  * Added assert_pattern & refute_pattern for pattern matching. (flavorjones)
+  * Added matching must_pattern_match & wont_pattern_match to minitest/spec.
+
+* 1 bug fix:
+
+  * Support the new message format of NameError in Ruby 3.3 (mame)
+
+=== 5.17.0 / 2022-12-31
+
+* 1 minor enhancement:
+
+  * Refactor setup hooks into a SETUP_METHODS constant. (MSP-Greg)
+
+* 3 bug fixes:
+
+  * Fix kwargs for Mock calls to delegator. (blowmage)
+  * Fix kwargs for expectations. (bobmazanec, blowmage)
+  * Remove check for .b method. (tenderlove)
+
+=== 5.16.3 / 2022-08-17
+
+* 2 bug fixes:
+
+  * Fixed exception sanitization by removing TypeError restriction on rescue.
+  * Use A instead of deprecated TESTOPTS in rake test:slow. (davidstosik)
+
+=== 5.16.2 / 2022-07-03
+
+* 4 bug fixes:
+
+  * Added MT_KWARGS_HACK kludge for stub to deal with ruby 2.7 kwargs nastiness. (tsugimoto)
+  * In #expect, pop Hash class from args if $MT_KWARGS_HACK. (casperisfine)
+  * In above scenario, set expected kwargs (as Objects) based on actual kwargs.
+  * Nuke ivars if exception fails to marshal twice (eg better_errors). (irphilli)
+
+=== 5.16.1 / 2022-06-20
+
+* 2 bug fixes:
+
+  * Apparently adding real kwarg support to mocks/stubs broke some code. Fixed.
+    * Use `MT_KWARGS_HACK=1` to activate the kludgy kwargs support w/ caveats.
+  * Clarified some doco wrt the block on #stub.
+
+=== 5.16.0 / 2022-06-14
+
+* 2 major enhancements:
+
+  * Added Minitest::TestTask.
+  * Dropping ruby 2.2 - 2.5. 2.6 is DTM soon too.
+
+* 11 minor enhancements:
+
+  * Added --show-skips option to show skips at end of run but not require --verbose. (MSP-Greg)
+  * Added Minitest.seed, the random seed used by the run.
+  * Calling `srand Minitest.seed` before all shuffles to ensure determinism.
+  * Extended #stub to handle kwargs for both block and call args. (SampsonCrowley)
+  * Extended Mock#__call to display kwargs.
+  * Extended Mock#expect to record kwargs.
+  * Extended Mock#method_missing to take kwargs & compare them against expected.
+  * Mock#method_missing displays better errors on arity mismatch.
+  * Removed minor optimization removing empty suites before run.
+  * Simplified test randomization (test order will change even with fixed seed).
+  * assert_match now returns the MatchData on success. (Nakilon)
+
+* 3 bug fixes:
+
+  * (Re)Fixed marshalling of exceptions, neutering them in 2 passes.
+  * Fixed more problems with rdoc.
+  * Had to patch up mock and stub to deal with <=2.7 kwargs oddities
+
+=== 5.15.0 / 2021-12-14
+
+* 1 major enhancement:
+
+  * assert_throws returns the value returned, if any. (volmer)
+
+* 3 minor enhancements:
+
+  * Added -S <CODES> option to skip reporting of certain types of output
+  * Enable Ruby deprecation warnings by default. (casperisfine)
+  * Use Etc.nprocessors by default in order to maximize cpu usage. (tonytonyjan)
+
+* 6 bug fixes:
+
+  * Close then unlink tempfiles on Windows. (nobu)
+  * Fixed #skip_until for windows paths. (MSP-Greg)
+  * Fixed a bunch of tests for jruby and windows. (MSP-Greg)
+  * Fixed marshalling of specs if they error. (tenderlove, jeremyevans, et al)
+  * Updated deprecation message for block expectations. (blowmage)
+  * Use Kernel.warn directly in expectations in case CUT defines their own warn. (firien)
+
+=== 5.14.4 / 2021-02-23
+
+* 1 bug fix:
+
+  * Fixed deprecation warning using stub with methods using keyword arguments. (Nakilon)
+
+=== 5.14.3 / 2021-01-05
+
+* 1 bug fix:
+
+  * Bumped require_ruby_version to < 4 (trunk = 3.1).
+
+=== 5.14.2 / 2020-08-31
+
+* 1 bug fix:
+
+  * Bumped ruby version to include 3.0 (trunk).
+
+=== 5.14.1 / 2020-05-15
+
+* 3 minor enhancements:
+
+  * Minitest.filter_backtrace returns original backtrace if filter comes back empty.
+  * Minitest::BacktraceFilter now returns entire backtrace if $MT_DEBUG set in env.
+  * Return true on a successful refute. (jusleg)
+
+* 1 bug fix:
+
+  * Fixed expectation doco to not use global expectations.
+
+=== 5.14.0 / 2020-01-11
+
+* 2 minor enhancements:
+
+  * Block-assertions (eg assert_output) now error if raised inside the block. (casperisfine)
+  * Changed assert_raises to only catch Assertion since that covers Skip and friends.
+
+* 3 bug fixes:
+
+  * Added example for value wrapper with block to Expectations module. (stomar)
+  * Fixed use of must/wont_be_within_delta on Expectation instance. (stomar)
+  * Renamed UnexpectedError#exception to #error to avoid problems with reraising. (casperisfine)
+
 === 5.13.0 / 2019-10-29
 
 * 9 minor enhancements:
@@ -51,7 +366,7 @@
 
 * 3 bug fixes:
 
-  * Check `option[:filter]` klass before match. Fixes 2.6 warning. (y-yagi)
+  * Check \option[:filter] klass before match. Fixes 2.6 warning. (y-yagi)
   * Fixed Assertions#diff from recalculating if set to nil
   * Fixed spec section of readme to not use deprecated global expectations. (CheezItMan)
 
@@ -180,7 +495,7 @@
 * 2 bug fixes:
 
   * Re-release to refresh gem certificate signing. ugh.
-  * Fixed hoe/minitest to not augment load path if we're actually testing minitest.  
+  * Fixed hoe/minitest to not augment load path if we're actually testing minitest.
 
 === 5.9.0 / 2016-05-16
 
@@ -204,7 +519,7 @@
 * 2 bug fixes:
 
   * Re-release to refresh gem certificate signing. ugh.
-  * Fixed hoe/minitest to not augment load path if we're actually testing minitest.  
+  * Fixed hoe/minitest to not augment load path if we're actually testing minitest.
 
 === 5.8.4 / 2016-01-21
 
@@ -518,7 +833,7 @@ Minitest 5:
   * Added Minitest::Benchmark.
     * Your benchmarks need to move to their own subclass.
     * Benchmarks using the spec DSL have to have "Bench" somewhere in their describe.
-  * MiniTest::Unit.after_tests moved to Minitest.after_tests
+  * MiniTest::Unit.after_tests moved to Minitest.after_run
   * MiniTest::Unit.autorun is now Minitest.autorun. Just require minitest/autorun pls.
   * Removed ParallelEach#grep since it isn't used anywhere.
   * Renamed Runnable#__name__ to Runnable#name (but uses @NAME internally).
@@ -1364,4 +1679,3 @@ back.
 * 1 major enhancement
 
   * Birthday!
-
